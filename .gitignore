@@ -6,5 +6,10 @@
 environment_files/
 recordings/
 ub_runs/
+ub_memory/
+data/
+checkpoints/
+artifacts/
+evaluations/
 __pycache__/
 *.py[cod]

@@ -1,6 +1,6 @@
-# UB: An Object-Centric Agent for ARC-AGI-3
+# UB-X: A Lightweight Parallel World-Model Agent for ARC-AGI-3
 
-UB is an experimental agent for interactive ARC-AGI-3 environments. It studies a game through visual observations, builds a persistent object-level model of the scene, proposes actions, checks their effects, and revises its hypotheses as the environment changes.
+UB-X is an experimental offline agent for interactive ARC-AGI-3 environments. It combines exact-pixel perception, object and geometry tracking, competing executable mechanic hypotheses, an authoritative transition graph, sparse learned dynamics, and verified search.
 
 The project explores a central question: can an agent learn the rules of an unfamiliar visual environment quickly enough to act purposefully, without relying on a game-specific controller?
 
@@ -8,7 +8,7 @@ The project explores a central question: can an agent learn the rules of an unfa
 
 ## Project status
 
-UB is an active research prototype, not a finished competition submission. The current local harness uses the authenticated Codex CLI as its reasoning component. The intended competition version will replace that dependency with a compact offline policy/value model and search engine suitable for Kaggle's network-isolated runtime.
+UB-X is an active research prototype, not a trained competition submission. The complete offline runtime and training foundation is implemented. Until a checkpoint is trained, `offline_ubx` uses its deterministic graph-and-information-gain bootstrap. The authenticated Codex CLI remains available only as a development teacher.
 
 The repository currently includes:
 
@@ -19,6 +19,10 @@ The repository currently includes:
 - bounded breadth-first search as a late-stage recovery mechanism;
 - structured trace and screenshot capture for evaluation;
 - an optional live viewer kept separate from the core worker.
+- a 12-block, width-512 sparse world model with eight routed experts, top-2 routing, one shared expert, and eight-step action prediction;
+- procedural mechanic-family generation with family-level holdouts;
+- representation, imitation, on-policy distillation, and group-relative RL stages;
+- Modal shard/training/export orchestration and sub-1GB INT8 artifact enforcement.
 
 ## How UB works
 
@@ -62,7 +66,13 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-ub.txt
 ```
 
-Run a bounded one-level acceptance test:
+Run the offline deterministic bootstrap (no Codex/API planner):
+
+```powershell
+.\run_ub.ps1 -Game ls20 --planner offline_ubx --target-levels 1 --max-actions 40
+```
+
+Run the current Codex teacher harness:
 
 ```powershell
 .\run_ub.ps1 -Game ls20 --target-levels 1 --max-actions 40
@@ -75,6 +85,24 @@ Run the game continuously with the live viewer:
 ```
 
 Use `-NoViewer` for a headless run. Use `--fresh-memory` to start with an empty object map rather than reusing knowledge from an earlier run.
+
+Competition mode forces offline UB-X, ARC's competition operation mode, no Codex/Sol planner, and no viewer:
+
+```powershell
+.\run_ub.ps1 -Game ls20 --competition --model-path .\artifacts\ubx_int8.pt
+```
+
+## Train UB-X
+
+Install training-only dependencies, generate immutable shards, and run a stage:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-ubx-train.txt
+.\.venv\Scripts\python.exe -m ubx.dataset --output data\train_00000.npz --episodes 1000
+.\.venv\Scripts\python.exe -m ubx.train --data-dir data --output-dir checkpoints --stage representation --steps 10000
+```
+
+Run the distributed pipeline with `modal run modal_ubx.py`. It generates shards in parallel, trains the four stages sequentially on L4, validates/exports on A100, and checkpoints to the `arc-ubx` Volume every 20 minutes.
 
 ## Outputs and observability
 
@@ -101,14 +129,15 @@ The next phase is to turn successful interactions and exact local search into tr
 
 The initial target is a small grid-native network rather than a general-purpose language model. It will provide action priors, state-value estimates, and transition predictions to an adaptive search engine. This keeps the final system reproducible, inexpensive to evaluate, and independent of external APIs.
 
-## Research roadmap
+## Evaluation and ablation
 
-- Build an automated rollout and trajectory-quality pipeline.
-- Train a compact policy/value baseline from search-generated demonstrations.
-- Add online transition learning and uncertainty-aware guarded action batches.
-- Compare beam search, policy-guided BFS, and MCTS under fixed action budgets.
-- Quantize and package the strongest model for offline competition evaluation.
-- Measure level completion, actions used, planning latency, and generalization to unseen games.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m ubx.evaluate --engine graph_baseline --episodes-per-family 5 --output evaluations\graph.json
+.\.venv\Scripts\python.exe -m ubx.evaluate --engine offline_ubx --model-path checkpoints\rl_final.pt --disable-neural-expert geometry --output evaluations\without_geometry.json
+```
+
+The evaluator reports completion by mechanic family, held-out-family success, planning latency, repeated states, and repeated dead actions. Expert disabling supports the required specialist ablations.
 
 ## Competition boundary
 
@@ -118,7 +147,9 @@ Kaggle evaluation runs without internet access and enforces ARC competition mode
 
 | Path | Purpose |
 |---|---|
-| `ub_worker.py` | Environment loop, action execution, recovery, and run artifacts |
+| `ub_worker.py` | Environment loop, planner selection, competition mode, action verification, and artifacts |
+| `ubx/` | Stable schemas, multiview perception, hypotheses, graph memory, sparse model, search, gym, training, evaluation, and export |
+| `modal_ubx.py` | Parallel Modal data generation and staged GPU pipeline |
 | `ub_scene.py` | Pixel inventory, object tracking, geometry, and scene changes |
 | `ub.py` | Planner schemas and Codex CLI integration |
 | `ub_object_map.py` | Persistent semantic object memory |

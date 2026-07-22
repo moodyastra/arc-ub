@@ -36,6 +36,12 @@ for ($index = 0; $index -lt $launcherArgs.Count; $index++) {
         continue
     }
 
+    if ($argument -eq "--competition") {
+        $noViewer = $true
+        $workerArgs += $argument
+        continue
+    }
+
     if ($index -eq 0 -and -not $gameWasSet -and -not $argument.StartsWith("-")) {
         $game = $argument
         $gameWasSet = $true

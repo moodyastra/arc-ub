@@ -23,6 +23,7 @@ from ub import GameCommand, LunaDecision, LunaLightCLIPlanner
 from ub_bfs import BFSResult, find_level_completion
 from ub_object_map import ObjectMapStore
 from ub_scene import SceneAnalyzer, snapshot_to_markdown
+from ubx.adapter import OfflinePlannerAdapter
 
 
 WORKSPACE = Path(__file__).resolve().parent
@@ -108,7 +109,7 @@ class UBWorker:
     def __init__(
         self,
         game_id: str,
-        planner: LunaLightCLIPlanner,
+        planner: LunaLightCLIPlanner | OfflinePlannerAdapter,
         *,
         escalation_planner: LunaLightCLIPlanner | None = None,
         run_root: Path,
@@ -122,6 +123,7 @@ class UBWorker:
         arc_api_key: str,
         arc_key_source: str,
         step_delay: float = 0.0,
+        competition: bool = False,
     ) -> None:
         self.game_id = game_id
         self.planner = planner
@@ -167,7 +169,8 @@ class UBWorker:
             fresh=fresh_memory,
         )
 
-        self.arcade = arc_agi.Arcade(arc_api_key=arc_api_key)
+        operation_mode = arc_agi.OperationMode.COMPETITION if competition else arc_agi.OperationMode.NORMAL
+        self.arcade = arc_agi.Arcade(arc_api_key=arc_api_key, operation_mode=operation_mode)
         operation_mode = getattr(self.arcade, "operation_mode", None)
         self.arc_operation_mode = str(
             getattr(operation_mode, "value", operation_mode or "unknown")
@@ -863,6 +866,8 @@ class UBWorker:
             "perceptual_scene_summary": self._perceptual_scene_summary(),
             "perceptual_scene_delta": self._perceptual_scene_delta(),
         }
+        if getattr(self.planner, "needs_exact_grid", False):
+            context["exact_grid"] = self.current_frame.astype(int).tolist()
         if include_full_scene:
             context["scene_observation_mode"] = "full_resync"
         else:
@@ -921,6 +926,18 @@ class UBWorker:
                 self.escalation_planner.reset_thread()
             self.scene_analyzer.reset_level()
         self._update_scene(self.actions_in_level)
+        acknowledge = getattr(self.planner, "acknowledge_transition", None)
+        if acknowledge is not None:
+            acknowledge(
+                before,
+                self.current_frame,
+                command,
+                action_number=self.actions_in_level,
+                level=self._current_level_number(),
+                available_actions=list(observation.available_actions),
+                terminal=observation.state == GameState.WIN,
+                reset=observation.state == GameState.GAME_OVER,
+            )
         player_ids = self._player_component_ids(decision, scene_before)
         player_motion = self._player_motion(player_ids, self.scene_snapshot)
         important_events = self._important_scene_events(
@@ -1090,7 +1107,9 @@ class UBWorker:
                 primary_failed = True
             self.planner_turns += 1
             primary_decision = result.decision
-            primary_source = "sol_emergency" if primary_failed else "luna"
+            primary_source = "sol_emergency" if primary_failed else (
+                self.planner.model if getattr(self.planner, "needs_exact_grid", False) else "luna"
+            )
             primary_model = (
                 self.escalation_planner.model  # type: ignore[union-attr]
                 if primary_failed
@@ -1104,7 +1123,7 @@ class UBWorker:
             effective_decision = primary_decision
             planner_model = primary_model
             effective_thread_id = primary_thread_id
-            selected_by = "sol" if primary_failed else "luna"
+            selected_by = "sol" if primary_failed else primary_source
 
             sol_result = None
             if not primary_failed and not (bfs_result and bfs_result.found):
@@ -1303,7 +1322,21 @@ class UBWorker:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run UB's Codex CLI ARC screenshot/action loop.")
     parser.add_argument("--game", default="ls20")
+    parser.add_argument(
+        "--planner",
+        default="codex_teacher",
+        choices=["codex_teacher", "graph_baseline", "offline_ubx"],
+    )
     parser.add_argument("--model", default="gpt-5.6-luna")
+    parser.add_argument("--model-path", type=Path, default=None)
+    parser.add_argument("--search-budget-ms", type=int, default=500)
+    parser.add_argument("--max-hypotheses", type=int, default=8)
+    parser.add_argument("--disable-neural-expert", action="append", default=[])
+    parser.add_argument(
+        "--competition",
+        action="store_true",
+        help="Force offline UB-X planning and ARC competition operation mode.",
+    )
     parser.add_argument("--reasoning", default="low", choices=["none", "low", "medium", "high"])
     parser.add_argument("--max-actions", type=int, default=1500)
     parser.add_argument("--max-planner-turns", type=int, default=600)
@@ -1331,16 +1364,32 @@ def main() -> None:
     args = parse_args()
     arc_api_key, arc_key_source = load_arc_api_key()
     rules_path = WORKSPACE / "observation_prompt.json"
-    planner = LunaLightCLIPlanner(
-        rules_path,
-        model=args.model,
-        reasoning_effort=args.reasoning,
-        working_directory=WORKSPACE,
-        planner_role="primary",
-    )
+    planner_name = "offline_ubx" if args.competition else args.planner
+    if planner_name == "codex_teacher":
+        planner = LunaLightCLIPlanner(
+            rules_path,
+            model=args.model,
+            reasoning_effort=args.reasoning,
+            working_directory=WORKSPACE,
+            planner_role="primary",
+        )
+    else:
+        planner = OfflinePlannerAdapter(
+            rules_path,
+            planner=planner_name,
+            model_path=args.model_path,
+            search_budget_ms=args.search_budget_ms,
+            max_hypotheses=args.max_hypotheses,
+            disabled_experts=tuple(args.disable_neural_expert),
+        )
     escalation_policy = planner.rules["execution_policy"].get("escalation", {})
     escalation_planner = None
-    if escalation_policy.get("enabled", False) and not args.disable_sol_escalation:
+    if (
+        planner_name == "codex_teacher"
+        and escalation_policy.get("enabled", False)
+        and not args.disable_sol_escalation
+        and not args.competition
+    ):
         escalation_planner = LunaLightCLIPlanner(
             rules_path,
             model=str(escalation_policy.get("model", "gpt-5.6-sol")),
@@ -1365,6 +1414,7 @@ def main() -> None:
         arc_api_key=arc_api_key,
         arc_key_source=arc_key_source,
         step_delay=args.step_delay,
+        competition=args.competition,
     )
     worker.run()
 
