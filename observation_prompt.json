@@ -1,0 +1,136 @@
+{
+  "purpose": "Single source of truth for UB's human-style ARC observation and action policy.",
+  "instruction": "Observe like a human before planning: differences, similarities, whole objects and their inner shapes, real-world analogies, geometric relationships, common-sense roles, then the next efficient move batch.",
+  "coordinate_system": {
+    "logical_grid": "64x64",
+    "valid_range": "x and y are integers from 0 through 63",
+    "render_scale": 10,
+    "rule": "Screenshots are enlarged 10x for visibility. Report logical game coordinates, never 640x640 screenshot pixels."
+  },
+  "human_reasoning_order": [
+    "1. Differences: first compare the new frame with the previous checked frame.",
+    "2. Similarities: then find repeated colors, forms, arrangements, and behaviors.",
+    "3. Whole objects: group touching, enclosed, and deliberately aligned colored parts; inspect both outer shapes and inner marks.",
+    "4. Real-world grounding: give each important whole object a simple possible real-life analogy.",
+    "5. Geometry: prioritize symmetry, reflection, rotation, scale, containment, alignment, and matching shapes.",
+    "6. Common sense: infer likely roles from distance, accessibility, contrast, repetition, and relation to the movable object.",
+    "7. Collectibles: identify useful intermediate objects before committing to a likely ending when the budget permits.",
+    "8. Action cadence: move then check for each of the first three actions; afterward execute a useful batch before the next planner check."
+  ],
+  "rules": [
+    "The human reasoning order is authoritative and must be reapplied at every planner turn.",
+    "Treat raw connected components as visual evidence, not automatically as separate objects. Merge parts that form one recognizable whole.",
+    "Do not create semantic object rows for empty space, padding, generic floor, walls, room fill, or background fragments. Mention terrain only as a compact route constraint when it materially affects movement.",
+    "Keep the semantic object map selective: normally 3-8 important whole objects and never more than 12. Unknown purpose is allowed, but visual salience or behavioral relevance is required.",
+    "Every reported geometric match between distinct semantic candidates is mandatory attention: compare the actual matched candidates, mention the relationship, and keep both important counterparts in the semantic object map. Do not substitute an unrelated object for a reported match.",
+    "At every check, compare each important object's outer shape, inner marks, orientation, rotation, reflection, scale, and containment with the previous frame, including distant objects the movable object did not touch.",
+    "At every check, scan each distinct screen color separately and compare its meaningful regions with the previous frame. Edge bars, strips, counters, and icons may encode state; summarize related pieces as one UI signal rather than many objects.",
+    "For the first three actions after every fresh level or reset, use exactly: move once, capture and check; move once, capture and check; move once, capture and check.",
+    "After the first three checked actions, return at least three useful commands whenever a route can be stated. The worker safely interrupts on collision, a discrete visual event, level change, or completion.",
+    "Use only one or two later commands when the very next frame is required to choose a safe direction, such as a true junction, uncertain control, or immediate hazard. Nearness to a collectible or goal alone is not a reason to shrink the batch because the worker can stop early.",
+    "On a verified clear route, choose a logical batch of 3-8 actions based on distance to the next decision point.",
+    "After every check, inspect all four sides and edges for bars, counters, lives, locks, timers, or other UI changes.",
+    "For every important object maintain: logical position, color, shapes, real-life possible object, importance 0-10, and exactly two current speculations.",
+    "After interaction, reuse the object's memory id and replace its two speculations with revised hypotheses.",
+    "Uncertainty alone is not being stuck. Mark stuck only after repeated checked attempts make no meaningful progress, a state or collision repeats, or the plausible route hypotheses have been exhausted.",
+    "When genuinely stuck, preserve a compact evidence dump so a last-resort senior planner can challenge the current assumptions without repeating the whole exploration.",
+    "BFS is a last resort. Request it only when needed and only after at least three individually checked moves plus about 10 moves, 37 percent scene coverage, or strong level understanding."
+  ],
+  "semantic_object_policy": {
+    "raw_components_are_evidence_not_objects": true,
+    "group_touching_contained_and_aligned_parts": true,
+    "exclude_background_and_empty_space": true,
+    "normally_keep_rows": [3, 8],
+    "hard_max_rows": 12,
+    "prioritize": [
+      "movable or player-like object",
+      "collectible or switch-like object",
+      "goal, reference, or template-like object",
+      "objects participating in repeated, symmetric, rotated, reflected, or scaled relationships",
+      "distinct changing UI signals",
+      "hazards and route-changing structures"
+    ]
+  },
+  "execution_policy": {
+    "first_three": {
+      "actions_per_check": 1,
+      "repeat_after_each_new_level": true
+    },
+    "normal_batch": {
+      "recommended_actions": 3,
+      "minimum_actions": 3,
+      "maximum_actions": 8
+    },
+    "short_batch_exception": {
+      "minimum_actions": 1,
+      "maximum_actions": 2,
+      "requires_next_frame_to_choose_safe_direction": true
+    },
+    "visual_feed": {
+      "full_resync_planner_turns": 10,
+      "send_only_latest_between_resyncs": true,
+      "stop_batch_on_unchanged_playfield": true
+    },
+    "bfs": {
+      "requires_luna_request": true,
+      "minimum_checked_actions": 3,
+      "maturity_any_of": {
+        "actions_in_level": 10,
+        "scene_coverage": 0.37,
+        "level_model_confidence": 0.85
+      },
+      "execution_batch": 3,
+      "max_depth": 20,
+      "max_generated_states": 500,
+      "max_frontier": 128,
+      "timeout_seconds": 5.0
+    },
+    "escalation": {
+      "enabled": true,
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "medium",
+      "minimum_actions_in_level": 10,
+      "required_consecutive_stuck_turns": 2,
+      "repeated_semantic_state_visits": 3,
+      "failed_bfs_allows_immediate": true,
+      "cooldown_planner_turns": 6,
+      "max_attempts_per_level": 2,
+      "history_actions": 60,
+      "history_decisions": 6,
+      "timeout_seconds": 240.0
+    },
+    "planner_retries": 2
+  },
+  "object_memory": {
+    "canonical_json": "ub_memory/{game_id}/object_map.json",
+    "canonical_markdown": "ub_memory/{game_id}/object_map.md",
+    "run_snapshot_json": "ub_runs/{run_id}/object_map.json",
+    "run_snapshot_markdown": "ub_runs/{run_id}/object_map.md",
+    "compact_current_level_only": true,
+    "compact_max_rows": 12,
+    "visible_columns": [
+      "Position (x,y)",
+      "Object color",
+      "Shape(s)",
+      "Real life possible object",
+      "Importance",
+      "Two speculations"
+    ]
+  },
+  "game_profiles": {
+    "ls20": {
+      "controls": {
+        "ACTION1": "up",
+        "ACTION2": "down",
+        "ACTION3": "left",
+        "ACTION4": "right"
+      },
+      "ui_regions_yxyx": [
+        [61, 64, 0, 64]
+      ],
+      "bfs_ignore_regions_yxyx": [
+        [61, 64, 0, 64]
+      ]
+    }
+  }
+}

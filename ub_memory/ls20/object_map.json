@@ -1,0 +1,339 @@
+{
+  "schema_version": 1,
+  "game_id": "ls20",
+  "revision": 19,
+  "updated_at": "2026-07-21T05:48:15.283891+00:00",
+  "levels": {
+    "1": {
+      "status": "complete",
+      "actions_taken": 34,
+      "objects": {
+        "L01-O001": {
+          "position": "(32-40,8-29)",
+          "color": "gray, black, blue, and orange",
+          "shapes": [
+            "hollow frame",
+            "L-like inner mark",
+            "filled rectangle",
+            "vertical stem"
+          ],
+          "real_life_possible_object": "player entering activated goal",
+          "importance": 10,
+          "speculations": [
+            "The player has re-entered the goal stem after collecting the switch.",
+            "Additional upward motion may complete the level."
+          ],
+          "status": "visible",
+          "_meta": {
+            "first_seen_action": 0,
+            "last_seen_action": 31,
+            "times_seen": 18,
+            "speculation_history": [
+              {
+                "action": 14,
+                "speculations": [
+                  "A downward move will overlap and likely collect or activate the white object.",
+                  "After that interaction, the player should return through the upper passage toward the framed target."
+                ]
+              },
+              {
+                "action": 15,
+                "speculations": [
+                  "The player has collected the white object and should now return toward the upper target.",
+                  "The route back is up, then right across the upper passage."
+                ]
+              },
+              {
+                "action": 17,
+                "speculations": [
+                  "The player is at a lateral barrier on the left side of the obstacle.",
+                  "Moving upward may reach a height where the route to the central stem opens."
+                ]
+              },
+              {
+                "action": 18,
+                "speculations": [
+                  "The player cannot cross right or move higher from this ledge.",
+                  "The remaining route likely goes down around the central obstacle, then right and up."
+                ]
+              },
+              {
+                "action": 21,
+                "speculations": [
+                  "The player is beside the central obstacle’s lower section.",
+                  "Moving left first should enter the lower-left route, then allow descent around the obstacle."
+                ]
+              },
+              {
+                "action": 27,
+                "speculations": [
+                  "The player is positioned directly below the goal stem.",
+                  "A straight upward run should now reach the activated target."
+                ]
+              }
+            ]
+          }
+        },
+        "L01-O002": {
+          "position": "(33-39,9-15)",
+          "color": "black and blue",
+          "shapes": [
+            "hollow frame",
+            "L-like inner mark"
+          ],
+          "real_life_possible_object": "activated goal receptacle",
+          "importance": 10,
+          "speculations": [
+            "The goal is now active after the white switch was collected.",
+            "The player likely needs to move farther upward into the receptacle."
+          ],
+          "status": "goal",
+          "_meta": {
+            "first_seen_action": 0,
+            "last_seen_action": 31,
+            "times_seen": 18,
+            "speculation_history": [
+              {
+                "action": 14,
+                "speculations": [
+                  "It may complete only after the white object has been activated.",
+                  "Its small blue inner mark is the scaled geometric counterpart of the lower-left reference icon."
+                ]
+              },
+              {
+                "action": 15,
+                "speculations": [
+                  "The target may now be active after collection.",
+                  "Return to it through the upper passage and test upward contact."
+                ]
+              },
+              {
+                "action": 17,
+                "speculations": [
+                  "The goal remains the likely final target after collection.",
+                  "The route may require entering the stem from above the current junction."
+                ]
+              },
+              {
+                "action": 18,
+                "speculations": [
+                  "The goal likely activates after the collected state but requires approach from the right-side route.",
+                  "The player should reach it from below after circling the obstacle."
+                ]
+              },
+              {
+                "action": 21,
+                "speculations": [
+                  "The goal remains the destination after circling the obstacle.",
+                  "Approach from the right-side stem is still required."
+                ]
+              },
+              {
+                "action": 27,
+                "speculations": [
+                  "The target should now be active after collecting the white switch.",
+                  "The player can approach it through the aligned vertical stem."
+                ]
+              }
+            ]
+          }
+        },
+        "L01-O003": {
+          "position": "(20-22,31-33)",
+          "color": "white and off-white",
+          "shapes": [
+            "L-like",
+            "point"
+          ],
+          "real_life_possible_object": "collected switch",
+          "importance": 10,
+          "speculations": [
+            "The switch remains logically collected.",
+            "Its renderer-visible pixels do not represent a new interaction."
+          ],
+          "status": "collected",
+          "_meta": {
+            "first_seen_action": 0,
+            "last_seen_action": 31,
+            "times_seen": 18,
+            "speculation_history": [
+              {
+                "action": 14,
+                "speculations": [
+                  "It is the likely prerequisite that was missing when the upper target failed to complete.",
+                  "Direct overlap from above should reveal whether it is collected, toggled, or blocking."
+                ]
+              },
+              {
+                "action": 15,
+                "speculations": [
+                  "Its disappearance confirms successful activation.",
+                  "The rotated lower-left reference may encode the updated required pattern."
+                ]
+              },
+              {
+                "action": 17,
+                "speculations": [
+                  "The prior disappearance confirms it was activated.",
+                  "Its visual reappearance may be a renderer artifact or reset-like icon state, not evidence of uncollection."
+                ]
+              },
+              {
+                "action": 18,
+                "speculations": [
+                  "Its prior disappearance confirms collection.",
+                  "Its current visible pixels do not alter the collected logical state."
+                ]
+              },
+              {
+                "action": 21,
+                "speculations": [
+                  "The collectible has already been activated.",
+                  "Visible white pixels are likely a renderer artifact or re-rendered marker."
+                ]
+              },
+              {
+                "action": 27,
+                "speculations": [
+                  "The switch was collected earlier.",
+                  "Its logical collected state persists despite visual reappearance."
+                ]
+              }
+            ]
+          }
+        },
+        "L01-O004": {
+          "position": "(1-10,53-62)",
+          "color": "black and blue",
+          "shapes": [
+            "hollow frame",
+            "filled square",
+            "rotated angular inner mark"
+          ],
+          "real_life_possible_object": "reference template",
+          "importance": 7,
+          "speculations": [
+            "Its rotation records the activated state.",
+            "It remains a scaled counterpart of the goal geometry."
+          ],
+          "status": "visible",
+          "_meta": {
+            "first_seen_action": 0,
+            "last_seen_action": 31,
+            "times_seen": 18,
+            "speculation_history": [
+              {
+                "action": 14,
+                "speculations": [
+                  "Its blue inner geometry is an approximately 2x scaled counterpart of the upper target's blue mark.",
+                  "It likely communicates the required target pattern rather than being traversable."
+                ]
+              },
+              {
+                "action": 15,
+                "speculations": [
+                  "Its blue inner shape rotated after collection.",
+                  "It may show the orientation required at the goal."
+                ]
+              },
+              {
+                "action": 17,
+                "speculations": [
+                  "Its rotated blue shape reflects the activated state.",
+                  "It may encode the orientation required at the goal."
+                ]
+              },
+              {
+                "action": 18,
+                "speculations": [
+                  "The rotated inner shape reflects the activated state.",
+                  "It likely indicates the target orientation."
+                ]
+              },
+              {
+                "action": 21,
+                "speculations": [
+                  "Its rotated shape records the activated state.",
+                  "It likely indicates the required target orientation."
+                ]
+              },
+              {
+                "action": 27,
+                "speculations": [
+                  "Its rotated blue shape records the activated state.",
+                  "It remains a scaled counterpart of the goal geometry."
+                ]
+              }
+            ]
+          }
+        },
+        "L01-O005": {
+          "position": "(12-63,60-63)",
+          "color": "yellow, red, gray, and black",
+          "shapes": [
+            "long status bar",
+            "three repeated squares",
+            "framed icon"
+          ],
+          "real_life_possible_object": "energy or move-budget display",
+          "importance": 5,
+          "speculations": [
+            "The yellow segment tracks movement expenditure.",
+            "The red indicators remain fixed."
+          ],
+          "status": "visible",
+          "_meta": {
+            "first_seen_action": 0,
+            "last_seen_action": 31,
+            "times_seen": 18,
+            "speculation_history": [
+              {
+                "action": 12,
+                "speculations": [
+                  "The yellow bar decreases with successful movement.",
+                  "The red indicators remain fixed."
+                ]
+              },
+              {
+                "action": 14,
+                "speculations": [
+                  "The yellow segment decreases by about one logical unit per successful move.",
+                  "The three red squares are a fixed counter or lives indicator because they have not changed."
+                ]
+              },
+              {
+                "action": 15,
+                "speculations": [
+                  "The yellow segment continues tracking movement.",
+                  "The red indicators remain unchanged."
+                ]
+              },
+              {
+                "action": 17,
+                "speculations": [
+                  "The yellow segment decreases after movement attempts.",
+                  "The red indicators remain fixed."
+                ]
+              },
+              {
+                "action": 18,
+                "speculations": [
+                  "The yellow segment tracks action expenditure.",
+                  "The red indicators remain fixed."
+                ]
+              },
+              {
+                "action": 21,
+                "speculations": [
+                  "The yellow segment decreases on movement attempts.",
+                  "The red indicators remain fixed."
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "run_id": "ls20_20260721_003944"
+}
