@@ -1,44 +1,66 @@
-# UB + Luna Light
+# UB: An Object-Centric Agent for ARC-AGI-3
 
-UB uses the locally authenticated Codex CLI with `gpt-5.6-luna` and Light
-(`low`) reasoning. It does not use API credits. A separate one-shot
-`gpt-5.6-sol` Medium planner is available only behind the last-resort gate.
+UB is an experimental agent for interactive ARC-AGI-3 environments. It studies a game through visual observations, builds a persistent object-level model of the scene, proposes actions, checks their effects, and revises its hypotheses as the environment changes.
 
-The policy source is `observation_prompt.json`. For every level the worker:
+The project explores a central question: can an agent learn the rules of an unfamiliar visual environment quickly enough to act purposefully, without relying on a game-specific controller?
 
-1. captures the reset/level-start frame;
-2. asks Luna for one move, applies it, and sends the resulting photo back;
-3. repeats that move/check cadence for moves two and three;
-4. requests a logical batch of three to eight moves after those probes, stopping
-   early only for blocked movement, a discrete visual event, a level change, or completion;
-5. inventories every connected color component for diagnostics, then condenses
-   it into a small set of whole semantic candidates before Luna sees it;
-6. explicitly raises repeated, symmetric, rotated, reflected, scaled, and
-   analogous composite candidates above background scenery;
-7. sends only the newest checked frame between periodic full visual resyncs;
-8. merges the active planner's logical 64x64 object observations into durable JSON and the
-   six-column Markdown table;
-9. runs bounded BFS only when Luna requests it and, after the first three
-   checked moves, actions reach 10, coverage reaches 37%, or Luna's level model
-   confidence reaches 85%;
-10. executes at most three BFS moves before photographing and consulting Luna
-   again;
-11. sends a bounded evidence dump to a fresh Sol Medium thread only after a
-   failed BFS, two mature stuck checks, or three visits to the same semantic
-   state; calls are capped, cooled down, and never made when BFS found a path;
-12. starts a compact fresh Luna thread for each new level and continues until
-   ARC reports the game won.
+![UB analyzing an ARC-AGI-3 environment](ls20_level_1_complete.png)
 
-Each escalation saves an auditable `sol_escalation_step_*.json` inside that run
-directory. Disable the optional fallback with `--disable-sol-escalation`.
+## Project status
 
-The live object memory is available at:
+UB is an active research prototype, not a finished competition submission. The current local harness uses the authenticated Codex CLI as its reasoning component. The intended competition version will replace that dependency with a compact offline policy/value model and search engine suitable for Kaggle's network-isolated runtime.
 
-- `ub_memory/<game>/object_map.json` for machines;
-- `ub_memory/<game>/object_map.md` for people;
-- `ub_runs/<run>/object_map.*` as the exact run snapshot.
-- `ub_runs/<run>/scene_inventory.*` as the exhaustive current pixel census;
-- `ub_runs/<run>/scene_events.jsonl` as the compact change history.
+The repository currently includes:
+
+- an object-centric visual perception pipeline;
+- persistent JSON and Markdown scene memory;
+- geometry, symmetry, rotation, reflection, and color-change analysis;
+- adaptive single-step probing followed by guarded multi-action plans;
+- bounded breadth-first search as a late-stage recovery mechanism;
+- structured trace and screenshot capture for evaluation;
+- an optional live viewer kept separate from the core worker.
+
+## How UB works
+
+```text
+ARC observation
+      |
+      v
+Visual inventory -> semantic objects -> persistent scene model
+      |                                      |
+      +------------ change detection <-------+
+                                             |
+                                             v
+                               planner -> guarded actions
+                                             |
+                                             v
+                                      ARC environment
+```
+
+At the beginning of a level, UB performs three deliberate move-and-check probes. These establish how the player moves and which parts of the scene respond. Once the observed transition model is sufficiently stable, the planner can issue a logical batch of actions. Execution stops early when the result diverges from expectations, a meaningful visual event occurs, movement is blocked, or the level changes.
+
+The agent treats empty space and large uniform regions as probable background while prioritizing distinctive objects and relationships. Repetition, containment, alignment, symmetry, rotation, reflection, scaling, and rare colors are used to identify likely players, collectibles, controls, clues, and goals. These interpretations remain hypotheses and are revised after interaction.
+
+Breadth-first search is intentionally deferred until the level has been explored or the planner requests recovery. A separate higher-reasoning escalation is available only after repeated evidence of being stuck.
+
+## Run locally
+
+### Requirements
+
+- Windows PowerShell
+- Python 3.12 or compatible
+- an installed and authenticated Codex CLI
+- access to the ARC-AGI toolkit and game environments
+- an ARC profile key stored locally in `.env2` or `.env2.txt`
+
+Secrets and downloaded environment files are excluded from Git. The launcher reads the existing ARC key but never creates or prints one.
+
+Install the Python dependencies in a virtual environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-ub.txt
+```
 
 Run a bounded one-level acceptance test:
 
@@ -46,36 +68,64 @@ Run a bounded one-level acceptance test:
 .\run_ub.ps1 -Game ls20 --target-levels 1 --max-actions 40
 ```
 
-Run the entire game with the live viewer and the existing ARC profile key from
-`.env2.txt` (or `.env2`):
+Run the game continuously with the live viewer:
 
 ```powershell
 .\run_ub.ps1 -Game ls20
 ```
 
-The launcher never creates or prints a key. It starts the removable viewer,
-runs UB in the foreground, and forwards extra worker arguments:
+Use `-NoViewer` for a headless run. Use `--fresh-memory` to start with an empty object map rather than reusing knowledge from an earlier run.
 
-```powershell
-.\run_ub.ps1 -Game ls20 --target-levels 1 --max-actions 40
-```
+## Outputs and observability
 
-Add `-NoViewer` for a submission-style run without the visual aid.
+Each run writes reproducible artifacts beneath `ub_runs/<run>/`:
 
-The viewer follows the newest matching run and shows the latest frame, progress,
-active model/confidence, and semantic object table. Add `--show-census` when
-launching the viewer manually to expose the raw pixel census. Delete `devtools/`
-to remove it; the worker never imports it.
+- `trace.jsonl`: decisions, actions, outcomes, and planner metadata;
+- `object_map.json` and `object_map.md`: the durable semantic object model;
+- `scene_inventory.*`: the exhaustive current pixel-component census;
+- `scene_events.jsonl`: compact visual-change history;
+- step screenshots and a final `summary.json`;
+- `sol_escalation_step_*.json`: bounded evidence supplied during last-resort escalation.
 
-Use `--fresh-memory` when you want a completely empty object map rather than
-reusing the accessible learned map. Step screenshots, `trace.jsonl`,
-`object_map.json`, `object_map.md`, and `summary.json` are written under each
-run directory.
+The optional viewer in `devtools/` displays the latest frame, progress, active planner, confidence, and object table. It is read-only, is never imported by the worker, and can be removed without changing agent behavior.
 
-## Kaggle boundary
+## Why cloud compute matters
 
-This Codex-CLI version is the local research harness, not yet the final Kaggle
-runtime: Kaggle evaluation has no internet access and forces ARC competition
-mode. Keep `devtools/` out of the submission, replace the Luna/Sol CLI planners
-with an offline packaged planner, and create only one competition scorecard with
-one `make()` call per environment.
+The next phase is to turn successful interactions and exact local search into training data for a specialized offline model. Cloud compute would support:
+
+1. parallel rollout generation across many games and randomized states;
+2. imitation learning from successful planner and search trajectories;
+3. policy/value and transition-model training;
+4. large held-out evaluations and controlled ablations;
+5. model compression and CPU-oriented inference testing.
+
+The initial target is a small grid-native network rather than a general-purpose language model. It will provide action priors, state-value estimates, and transition predictions to an adaptive search engine. This keeps the final system reproducible, inexpensive to evaluate, and independent of external APIs.
+
+## Research roadmap
+
+- Build an automated rollout and trajectory-quality pipeline.
+- Train a compact policy/value baseline from search-generated demonstrations.
+- Add online transition learning and uncertainty-aware guarded action batches.
+- Compare beam search, policy-guided BFS, and MCTS under fixed action budgets.
+- Quantize and package the strongest model for offline competition evaluation.
+- Measure level completion, actions used, planning latency, and generalization to unseen games.
+
+## Competition boundary
+
+Kaggle evaluation runs without internet access and enforces ARC competition mode. The present Codex-backed planner is therefore a development and data-generation harness only. A valid submission must package its planner and learned weights locally, omit `devtools/`, create a single competition scorecard, and make only one `make()` call per environment.
+
+## Repository guide
+
+| Path | Purpose |
+|---|---|
+| `ub_worker.py` | Environment loop, action execution, recovery, and run artifacts |
+| `ub_scene.py` | Pixel inventory, object tracking, geometry, and scene changes |
+| `ub.py` | Planner schemas and Codex CLI integration |
+| `ub_object_map.py` | Persistent semantic object memory |
+| `ub_bfs.py` | Bounded local search used for recovery and research |
+| `observation_prompt.json` | Human-inspired reasoning policy and output contract |
+| `devtools/` | Optional live visualization tools |
+
+## Responsible use
+
+Do not commit ARC keys, API credentials, downloaded environment packages, or private run data. The included `.gitignore` excludes the expected local secret and artifact paths.
