@@ -14,7 +14,8 @@ ACTION_INDEX = {f"ACTION{index}": index for index in range(1, 8)}
 
 
 def generate_shard(path: Path, *, episodes: int, seed: int, split: str = "train") -> Path:
-    grids, next_grids, actions, future_actions, rewards, dones, families = [], [], [], [], [], [], []
+    grids, next_grids, actions, action_x, action_y = [], [], [], [], []
+    future_actions, rewards, returns, dones, families = [], [], [], [], []
     selected = [family for family in MECHANIC_FAMILIES if family_split(family) == split]
     if not selected:
         raise ValueError(f"no families in split {split}")
@@ -23,19 +24,35 @@ def generate_shard(path: Path, *, episodes: int, seed: int, split: str = "train"
         env = ProceduralArcEnv(GymConfig(family=family, seed=seed + episode))
         grid = env.grid.copy()
         episode_actions: list[int] = []
+        episode_rewards: list[float] = []
         while not env.done:
             action = env.oracle_action() if episode % 3 else _random_action(env)
             next_grid, reward, done, _ = env.step(action)
             grids.append(grid); next_grids.append(next_grid)
             action_index = ACTION_INDEX[action["action"]]
             actions.append(action_index); episode_actions.append(action_index)
-            rewards.append(reward); dones.append(done); families.append(family)
+            action_x.append(int(action["x"]) if action.get("x") is not None else -1)
+            action_y.append(int(action["y"]) if action.get("y") is not None else -1)
+            rewards.append(reward); episode_rewards.append(float(reward))
+            dones.append(done); families.append(family)
             grid = next_grid
+        discounted = 0.0
+        episode_returns: list[float] = []
+        for reward in reversed(episode_rewards):
+            discounted = reward + 0.99 * discounted
+            episode_returns.append(discounted)
+        returns.extend(reversed(episode_returns))
         for index in range(len(episode_actions)):
             future = episode_actions[index:index + 8]
             future_actions.append(future + [0] * (8 - len(future)))
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, grid=np.asarray(grids, dtype=np.uint8), next_grid=np.asarray(next_grids, dtype=np.uint8), action=np.asarray(actions, dtype=np.int8), future_action=np.asarray(future_actions, dtype=np.int8), reward=np.asarray(rewards, dtype=np.float32), done=np.asarray(dones, dtype=bool), family=np.asarray(families))
+    np.savez_compressed(
+        path,
+        grid=np.asarray(grids, dtype=np.uint8), next_grid=np.asarray(next_grids, dtype=np.uint8),
+        action=np.asarray(actions, dtype=np.int8), action_x=np.asarray(action_x, dtype=np.int8), action_y=np.asarray(action_y, dtype=np.int8),
+        future_action=np.asarray(future_actions, dtype=np.int8), reward=np.asarray(rewards, dtype=np.float32),
+        return_to_go=np.asarray(returns, dtype=np.float32), done=np.asarray(dones, dtype=bool), family=np.asarray(families),
+    )
     return path
 
 

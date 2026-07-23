@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hashlib
 from typing import Any
 
 import numpy as np
@@ -158,5 +157,4 @@ class ProceduralArcEnv:
 
 
 def family_split(family: str) -> str:
-    digest = int(hashlib.blake2s(family.encode(), digest_size=2).hexdigest(), 16)
-    return "heldout" if digest % 5 == 0 else "train"
+    return "heldout" if family in {"collection", "delayed", "mixed"} else "train"

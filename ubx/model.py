@@ -99,7 +99,9 @@ class SparseExperts(nn.Module):
             selected = torch.nonzero(flat_indices == expert_index, as_tuple=False)
             token_indices = selected[:, 0]
             route_slots = selected[:, 1]
-            contribution = expert(flat[token_indices]) * flat_weights[token_indices, route_slots].unsqueeze(-1)
+            expert_output = expert(flat[token_indices])
+            route_weight = flat_weights[token_indices, route_slots].to(expert_output.dtype).unsqueeze(-1)
+            contribution = expert_output * route_weight
             output = output.index_add(0, token_indices, contribution)
         return output.reshape(shape), logits
 
@@ -144,6 +146,7 @@ class UBXModel(nn.Module):
         self.goal_head = nn.Linear(config.width, config.goals)
         self.next_actions = nn.Linear(config.width, config.prediction_horizon * config.actions)
         self.click_head = nn.Linear(config.width, 1)
+        self.click_offset_head = nn.Linear(config.width, 16)
         self.delta_head = nn.Linear(config.width, 16)
         self.next_latent = nn.Linear(config.width + config.actions, config.width)
 
@@ -167,8 +170,11 @@ class UBXModel(nn.Module):
         action_basis = torch.eye(self.config.actions, device=x.device, dtype=x.dtype).unsqueeze(0).expand(batch, -1, -1)
         pooled_actions = pooled.unsqueeze(1).expand(-1, self.config.actions, -1)
         next_latents = self.next_latent(torch.cat((pooled_actions, action_basis), dim=-1))
-        click = self.click_head(x).reshape(batch, 1, 16, 16)
-        click = F.interpolate(click, size=(64, 64), mode="bilinear", align_corners=False).squeeze(1)
+        click_coarse = self.click_head(x).reshape(batch, 16, 16)
+        click_coarse = click_coarse.repeat_interleave(4, dim=1).repeat_interleave(4, dim=2)
+        click_offsets = self.click_offset_head(x).reshape(batch, 16, 16, 4, 4)
+        click_offsets = click_offsets.permute(0, 1, 3, 2, 4).reshape(batch, 64, 64)
+        click = click_coarse + click_offsets
         return {
             "action_logits": self.action_head(pooled),
             "click_logits": click,
@@ -192,3 +198,13 @@ class UBXModel(nn.Module):
         inactive_per_sparse_block = max(0, self.config.routed_experts - self.config.top_k) * expert
         active = total - (self.config.depth - self.config.dense_blocks) * inactive_per_sparse_block
         return {"total_parameters": total, "estimated_active_parameters": active, "int8_megabytes": total / 1_000_000, "int4_megabytes": total / 2_000_000}
+
+
+def load_checkpoint_state(model: UBXModel, state: dict[str, torch.Tensor]) -> UBXModel:
+    """Load current or pre-offset checkpoints without hiding other schema errors."""
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    allowed_missing = {"click_offset_head.weight", "click_offset_head.bias"}
+    invalid_missing = set(missing) - allowed_missing
+    if invalid_missing or unexpected:
+        raise RuntimeError(f"incompatible checkpoint: missing={sorted(invalid_missing)}, unexpected={sorted(unexpected)}")
+    return model

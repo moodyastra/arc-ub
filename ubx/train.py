@@ -12,20 +12,42 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from .model import UBXModel, UBXModelConfig
+from .model import UBXModel, UBXModelConfig, load_checkpoint_state
+
+
+_ACTION_INDEX_CACHE: dict[Path, dict[int, np.ndarray]] = {}
 
 
 def load_batch(paths: list[Path], batch_size: int, rng: np.random.Generator) -> dict[str, torch.Tensor]:
     path = paths[int(rng.integers(len(paths)))]
     with np.load(path) as shard:
-        indices = rng.integers(len(shard["grid"]), size=batch_size)
+        actions = shard["action"]
+        class_indices = _ACTION_INDEX_CACHE.get(path)
+        if class_indices is None:
+            class_indices = {action: np.flatnonzero(actions == action) for action in range(1, 8)}
+            _ACTION_INDEX_CACHE[path] = class_indices
+        natural_count = batch_size // 2
+        indices = list(rng.integers(len(shard["grid"]), size=natural_count))
+        available_actions = [action for action, members in class_indices.items() if len(members)]
+        for offset in range(batch_size - natural_count):
+            action = available_actions[offset % len(available_actions)]
+            members = class_indices[action]
+            indices.append(int(members[int(rng.integers(len(members)))]))
+        rng.shuffle(indices)
+        indices = np.asarray(indices, dtype=np.int64)
         future = shard["future_action"][indices].astype(np.int64) if "future_action" in shard else np.repeat(shard["action"][indices, None], 8, axis=1).astype(np.int64)
+        action_x = shard["action_x"][indices].astype(np.int64) if "action_x" in shard else np.full(len(indices), -1, dtype=np.int64)
+        action_y = shard["action_y"][indices].astype(np.int64) if "action_y" in shard else np.full(len(indices), -1, dtype=np.int64)
+        returns = shard["return_to_go"][indices] if "return_to_go" in shard else shard["reward"][indices]
         return {
             "grid": torch.from_numpy(shard["grid"][indices].copy()),
             "next_grid": torch.from_numpy(shard["next_grid"][indices].copy()),
             "action": torch.from_numpy(shard["action"][indices].astype(np.int64)),
             "future_action": torch.from_numpy(future),
+            "action_x": torch.from_numpy(action_x),
+            "action_y": torch.from_numpy(action_y),
             "reward": torch.from_numpy(shard["reward"][indices].copy()),
+            "return_to_go": torch.from_numpy(np.asarray(returns, dtype=np.float32).copy()),
             "done": torch.from_numpy(shard["done"][indices].astype(np.float32)),
         }
 
@@ -37,14 +59,27 @@ def representation_loss(output: dict[str, torch.Tensor], batch: dict[str, torch.
     reconstruction_loss = F.cross_entropy(reconstruction["delta_logits"], current)
     event_target = torch.stack((batch["done"], batch["reward"].gt(0).float(), batch["reward"].lt(-0.5).float(), batch["grid"].ne(batch["next_grid"]).flatten(1).any(1).float()), dim=1)
     horizon_loss = F.cross_entropy(output["next_action_logits"].reshape(-1, 8), batch["future_action"].reshape(-1), ignore_index=0)
-    return delta_loss + reconstruction_loss + horizon_loss + F.binary_cross_entropy_with_logits(output["event_logits"], event_target)
+    with torch.no_grad():
+        transition_error = output["delta_logits"].argmax(1).ne(target).float().mean((1, 2))
+        uncertainty_target = transition_error.unsqueeze(1).expand(-1, 2)
+    uncertainty_loss = F.mse_loss(output["uncertainty"], uncertainty_target)
+    return delta_loss + reconstruction_loss + horizon_loss + uncertainty_loss + F.binary_cross_entropy_with_logits(output["event_logits"], event_target)
 
 
 def imitation_loss(output: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> torch.Tensor:
     policy = F.cross_entropy(output["action_logits"][:, 1:], batch["action"] - 1)
-    value_target = batch["reward"].clamp(0, 1)
+    value_target = batch["return_to_go"].clamp(0, 1)
     horizon = F.cross_entropy(output["next_action_logits"].reshape(-1, 8), batch["future_action"].reshape(-1), ignore_index=0)
-    return policy + horizon + F.mse_loss(output["value"], value_target)
+    next_patch = F.interpolate(batch["next_grid"].unsqueeze(1).float(), size=(16, 16), mode="nearest").squeeze(1).long()
+    dynamics = F.cross_entropy(output["delta_logits"], next_patch)
+    click_mask = batch["action"].eq(6) & batch["action_x"].ge(0) & batch["action_y"].ge(0)
+    click_loss = output["click_logits"].sum() * 0.0
+    if click_mask.any():
+        click_target = batch["action_y"][click_mask] * 64 + batch["action_x"][click_mask]
+        click_loss = F.cross_entropy(output["click_logits"][click_mask].reshape(-1, 64 * 64), click_target)
+    # Keep the pretrained world model grounded while the policy specializes.
+    # This uses the existing forward pass, so retention adds negligible runtime.
+    return policy + horizon + click_loss + F.mse_loss(output["value"], value_target) + dynamics
 
 
 def distillation_loss(output: dict[str, torch.Tensor], teacher: dict[str, torch.Tensor]) -> torch.Tensor:
@@ -80,8 +115,9 @@ def train(
     start_step = 0
     if resume:
         payload = torch.load(resume, map_location=device, weights_only=True)
-        model.load_state_dict(payload["model"])
-        start_step = int(payload.get("step", 0))
+        load_checkpoint_state(model, payload["model"])
+        if payload.get("stage") == stage:
+            start_step = int(payload.get("step", 0))
     teacher = None
     if stage == "distill":
         teacher = UBXModel(UBXModelConfig()).to(device).eval()
@@ -110,7 +146,7 @@ def train(
                 loss = imitation_loss(output, batch) + distillation_loss(output, teacher_output)
             elif stage == "rl":
                 selected = output["action_logits"].log_softmax(-1).gather(1, batch["action"].unsqueeze(1)).squeeze(1)
-                loss = group_relative_loss(selected, batch["reward"], group_size=8) + F.mse_loss(output["value"], batch["reward"].clamp(0, 1))
+                loss = group_relative_loss(selected, batch["return_to_go"], group_size=8) + F.mse_loss(output["value"], batch["return_to_go"].clamp(0, 1))
             else:
                 raise ValueError(stage)
         optimizer.zero_grad(set_to_none=True)

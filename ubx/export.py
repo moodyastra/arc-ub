@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 
-from .model import UBXModel, UBXModelConfig
+from .model import UBXModel, UBXModelConfig, load_checkpoint_state
 
 
 class CompetitionWrapper(torch.nn.Module):
@@ -24,7 +24,7 @@ class CompetitionWrapper(torch.nn.Module):
 def export_checkpoint(checkpoint: Path, output: Path, *, max_bytes: int = 1_000_000_000) -> Path:
     payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
     model = UBXModel(UBXModelConfig(**payload.get("config", {})))
-    model.load_state_dict(payload["model"]); model.eval()
+    load_checkpoint_state(model, payload["model"]); model.eval()
     quantized = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
     example = torch.zeros((1, 64, 64), dtype=torch.long)
     traced = torch.jit.trace(CompetitionWrapper(quantized), (example, example), strict=False)

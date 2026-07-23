@@ -85,7 +85,7 @@ class OfflineUBXEngine(GraphBaselineEngine):
             raise FileNotFoundError(path)
         try:
             import torch
-            from .model import UBXModel, UBXModelConfig
+            from .model import UBXModel, UBXModelConfig, load_checkpoint_state
         except ImportError as exc:
             raise RuntimeError("Install requirements-ubx-train.txt to load a neural checkpoint") from exc
         self._torch = torch
@@ -95,7 +95,7 @@ class OfflineUBXEngine(GraphBaselineEngine):
             payload = torch.load(path, map_location="cpu", weights_only=True)
             config = UBXModelConfig(**payload.get("config", {}))
             model = UBXModel(config)
-            model.load_state_dict(payload["model"])
+            load_checkpoint_state(model, payload["model"])
             self.model = model.eval()
 
     def observe(self, observation: Observation) -> BeliefState:
