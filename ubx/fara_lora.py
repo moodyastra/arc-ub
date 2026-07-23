@@ -66,21 +66,38 @@ def train_adapter(
     gradient_accumulation: int,
     checkpoint_every: int,
     resume: bool,
+    quantization: str,
+    optimizer_bits: int,
 ) -> Path:
-    from peft import LoraConfig, PeftModel, get_peft_model
-    from transformers import AutoModelForImageTextToText, AutoProcessor
+    from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+    from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
 
     torch.manual_seed(7)
     random.seed(7)
     processor = AutoProcessor.from_pretrained(model_name)
+    quantization_config = None
+    if quantization == "4bit":
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+    elif quantization == "8bit":
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
     model = AutoModelForImageTextToText.from_pretrained(
         model_name,
         torch_dtype=torch.bfloat16,
         attn_implementation="sdpa",
         low_cpu_mem_usage=True,
-    ).cuda()
+        quantization_config=quantization_config,
+        device_map={"": 0},
+    )
     model.config.use_cache = False
-    model.gradient_checkpointing_enable()
+    if quantization_config is not None:
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    else:
+        model.gradient_checkpointing_enable()
     output_dir.mkdir(parents=True, exist_ok=True)
     latest_path = output_dir / "latest.json"
     latest = json.loads(latest_path.read_text(encoding="utf-8")) if resume and latest_path.exists() else None
@@ -100,7 +117,13 @@ def train_adapter(
     model.enable_input_require_grads()
     dataset = FaraArcDataset(manifest, processor)
     loader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fixed, num_workers=2, pin_memory=True)
-    optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=learning_rate)
+    trainable_parameters = (parameter for parameter in model.parameters() if parameter.requires_grad)
+    if optimizer_bits == 8:
+        from bitsandbytes.optim import AdamW8bit
+
+        optimizer = AdamW8bit(trainable_parameters, lr=learning_rate)
+    else:
+        optimizer = torch.optim.AdamW(trainable_parameters, lr=learning_rate)
     optimizer.zero_grad(set_to_none=True)
     step = int(latest["step"]) if latest else 0
     state_path = output_dir / "trainer-state.pt"
@@ -140,6 +163,8 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--gradient-accumulation", type=int, default=8)
     parser.add_argument("--checkpoint-every", type=int, default=100)
+    parser.add_argument("--quantization", choices=("4bit", "8bit", "none"), default="4bit")
+    parser.add_argument("--optimizer-bits", choices=(8, 32), type=int, default=8)
     parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
     print(train_adapter(
@@ -151,6 +176,8 @@ def main() -> None:
         gradient_accumulation=args.gradient_accumulation,
         checkpoint_every=args.checkpoint_every,
         resume=not args.no_resume,
+        quantization=args.quantization,
+        optimizer_bits=args.optimizer_bits,
     ))
 
 

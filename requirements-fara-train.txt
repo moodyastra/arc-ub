@@ -3,6 +3,7 @@ torchvision
 transformers>=5.14.1
 peft
 accelerate
+bitsandbytes>=0.46
 Pillow
 safetensors
 sentencepiece

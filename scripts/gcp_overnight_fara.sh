@@ -52,6 +52,7 @@ python3 -m venv "${WORK_ROOT}/venv"
 source "${WORK_ROOT}/venv/bin/activate"
 python -m pip install --upgrade pip
 python -m pip install -r "${WORK_ROOT}/repo/requirements-fara-train.txt"
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 mkdir -p "${WORK_ROOT}/outputs/data" "${WORK_ROOT}/outputs/fara_adapter"
 if [[ -n "${GCS_OUTPUT}" ]]; then
@@ -78,4 +79,6 @@ timeout "${DEADLINE_SECONDS}" python -m ubx.fara_lora \
   --manifest "${WORK_ROOT}/outputs/data/fara_train.jsonl" \
   --output-dir "${WORK_ROOT}/outputs/fara_adapter" \
   --steps "${TRAIN_STEPS}" \
+  --quantization 4bit \
+  --optimizer-bits 8 \
   --checkpoint-every 100
