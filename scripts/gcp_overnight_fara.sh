@@ -39,7 +39,7 @@ finish() {
 trap finish EXIT
 
 sudo apt-get update
-sudo apt-get install -y git python3-venv
+sudo apt-get install -y build-essential git python3-dev python3-venv
 if [[ ! -d "${WORK_ROOT}/repo/.git" ]]; then
   sudo mkdir -p "${WORK_ROOT}"
   sudo chown -R "$(id -u):$(id -g)" "${WORK_ROOT}"
