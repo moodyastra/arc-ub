@@ -17,6 +17,9 @@ TRAIN_STEPS="${TRAIN_STEPS:-1200}"
 MAX_SAMPLES="${MAX_SAMPLES:-12000}"
 DEADLINE_SECONDS="${DEADLINE_SECONDS:-27000}"
 SYNC_PID=""
+mkdir -p "${WORK_ROOT}/outputs"
+LOG_PATH="${WORK_ROOT}/outputs/startup.log"
+exec > >(tee -a "${LOG_PATH}") 2>&1
 
 sync_outputs() {
   if [[ -n "${GCS_OUTPUT}" && -d "${WORK_ROOT}/outputs" ]]; then
@@ -25,9 +28,11 @@ sync_outputs() {
 }
 
 finish() {
+  exit_status="$?"
   if [[ -n "${SYNC_PID}" ]]; then
     kill "${SYNC_PID}" 2>/dev/null || true
   fi
+  echo "UB-X Fara startup exiting with status ${exit_status}"
   sync_outputs
   sudo shutdown -h now || true
 }

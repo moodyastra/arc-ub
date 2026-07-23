@@ -2,6 +2,7 @@ param(
     [string]$Project = "project-2696835e-1819-4c22-9e3",
     [string]$Zone = "us-central1-b",
     [string]$Bucket = "gs://project-2696835e-1819-4c22-9e3-ubx-overnight",
+    [string]$OutputPrefix = "",
     [int]$TrainSteps = 1200,
     [int]$MaxSamples = 12000
 )
@@ -25,8 +26,11 @@ if ([double]$globalCpu -lt 48) {
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 $instance = "ubx-fara-$stamp"
+if (-not $OutputPrefix) {
+    $OutputPrefix = "runs/$instance"
+}
 $metadata = @(
-    "gcs-output=$Bucket/runs/$instance",
+    "gcs-output=$Bucket/$OutputPrefix",
     "train-steps=$TrainSteps",
     "max-samples=$MaxSamples",
     "deadline-seconds=27000"
@@ -61,4 +65,4 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Output "INSTANCE=$instance"
 Write-Output "LOGS: gcloud compute ssh $instance --zone=$Zone --command='sudo journalctl -u google-startup-scripts.service -f'"
-Write-Output "CHECKPOINTS: $Bucket/runs/$instance"
+Write-Output "CHECKPOINTS: $Bucket/$OutputPrefix"
