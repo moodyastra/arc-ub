@@ -17,8 +17,8 @@ TRAIN_STEPS="${TRAIN_STEPS:-1200}"
 MAX_SAMPLES="${MAX_SAMPLES:-12000}"
 DEADLINE_SECONDS="${DEADLINE_SECONDS:-27000}"
 SYNC_PID=""
-mkdir -p "${WORK_ROOT}/outputs"
-LOG_PATH="${WORK_ROOT}/outputs/startup.log"
+mkdir -p "${WORK_ROOT}/outputs/logs"
+LOG_PATH="${WORK_ROOT}/outputs/logs/$(hostname)-$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee -a "${LOG_PATH}") 2>&1
 
 sync_outputs() {

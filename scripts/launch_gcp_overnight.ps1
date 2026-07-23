@@ -3,6 +3,9 @@ param(
     [string]$Zone = "us-central1-b",
     [string]$Bucket = "gs://project-2696835e-1819-4c22-9e3-ubx-overnight",
     [string]$OutputPrefix = "",
+    [ValidateSet("STANDARD", "FLEX_START", "SPOT")]
+    [string]$ProvisioningModel = "FLEX_START",
+    [string]$RequestValidFor = "1h",
     [int]$TrainSteps = 1200,
     [int]$MaxSamples = 12000
 )
@@ -35,12 +38,16 @@ $metadata = @(
     "max-samples=$MaxSamples",
     "deadline-seconds=27000"
 ) -join ","
+$provisioningArgs = @("--provisioning-model=$ProvisioningModel")
+if ($ProvisioningModel -eq "FLEX_START") {
+    $provisioningArgs += "--request-valid-for-duration=$RequestValidFor"
+}
 
 & $gcloud compute instances create $instance `
     --project=$Project `
     --zone=$Zone `
     --machine-type=g4-standard-48 `
-    --provisioning-model=SPOT `
+    @provisioningArgs `
     --instance-termination-action=DELETE `
     --max-run-duration=8h `
     --maintenance-policy=TERMINATE `
