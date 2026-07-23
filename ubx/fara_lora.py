@@ -13,10 +13,18 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 
+def resize_training_image(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """Reduce visual-token cost while preserving hard pixel-art boundaries."""
+    if image.size == size:
+        return image
+    return image.resize(size, Image.Resampling.NEAREST)
+
+
 class FaraArcDataset(Dataset[dict[str, Any]]):
-    def __init__(self, manifest: Path, processor: Any) -> None:
+    def __init__(self, manifest: Path, processor: Any, image_size: tuple[int, int]) -> None:
         self.records = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.processor = processor
+        self.image_size = image_size
 
     def __len__(self) -> int:
         return len(self.records)
@@ -24,7 +32,7 @@ class FaraArcDataset(Dataset[dict[str, Any]]):
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         record = self.records[index]
         with Image.open(record["image"]) as source:
-            image = source.convert("RGB")
+            image = resize_training_image(source.convert("RGB"), self.image_size)
         prompt_messages = [
             {"role": "system", "content": [{"type": "text", "text": record["system"]}]},
             {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": record["prompt"]}]},
@@ -68,6 +76,7 @@ def train_adapter(
     resume: bool,
     quantization: str,
     optimizer_bits: int,
+    image_size: tuple[int, int],
 ) -> Path:
     from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
@@ -115,7 +124,7 @@ def train_adapter(
             ),
         )
     model.enable_input_require_grads()
-    dataset = FaraArcDataset(manifest, processor)
+    dataset = FaraArcDataset(manifest, processor, image_size)
     loader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fixed, num_workers=2, pin_memory=True)
     trainable_parameters = (parameter for parameter in model.parameters() if parameter.requires_grad)
     if optimizer_bits == 8:
@@ -165,6 +174,8 @@ def main() -> None:
     parser.add_argument("--checkpoint-every", type=int, default=100)
     parser.add_argument("--quantization", choices=("4bit", "8bit", "none"), default="4bit")
     parser.add_argument("--optimizer-bits", choices=(8, 32), type=int, default=8)
+    parser.add_argument("--image-width", type=int, default=960)
+    parser.add_argument("--image-height", type=int, default=600)
     parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
     print(train_adapter(
@@ -178,6 +189,7 @@ def main() -> None:
         resume=not args.no_resume,
         quantization=args.quantization,
         optimizer_bits=args.optimizer_bits,
+        image_size=(args.image_width, args.image_height),
     ))
 
 

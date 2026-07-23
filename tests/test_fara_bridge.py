@@ -1,8 +1,10 @@
 import json
 
 import numpy as np
+from PIL import Image
 
 from ubx.fara_arc_data import generate_dataset, render_observation, tool_completion
+from ubx.fara_lora import resize_training_image
 
 
 def test_fara_render_uses_native_target_resolution() -> None:
@@ -30,3 +32,14 @@ def test_fara_dataset_is_portable_and_image_backed(tmp_path) -> None:
     assert len(records) == 3
     assert all((tmp_path / "images" / f"train_{index:07d}.png").exists() for index in range(3))
     assert all(record["completion"].count("<tool_call>") == 1 for record in records)
+
+
+def test_training_resize_preserves_hard_color_regions() -> None:
+    image = Image.new("RGB", (4, 2), "black")
+    image.putpixel((3, 1), (255, 255, 0))
+
+    resized = resize_training_image(image, (8, 4))
+
+    assert resized.size == (8, 4)
+    assert resized.getpixel((7, 3)) == (255, 255, 0)
+    assert resized.getpixel((5, 3)) == (0, 0, 0)

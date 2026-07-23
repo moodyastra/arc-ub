@@ -81,4 +81,6 @@ timeout "${DEADLINE_SECONDS}" python -m ubx.fara_lora \
   --steps "${TRAIN_STEPS}" \
   --quantization 4bit \
   --optimizer-bits 8 \
+  --image-width 960 \
+  --image-height 600 \
   --checkpoint-every 100
