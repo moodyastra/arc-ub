@@ -97,6 +97,7 @@ def train_adapter(
                 task_type="CAUSAL_LM",
             ),
         )
+    model.enable_input_require_grads()
     dataset = FaraArcDataset(manifest, processor)
     loader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fixed, num_workers=2, pin_memory=True)
     optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=learning_rate)
